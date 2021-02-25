@@ -1,0 +1,147 @@
+@startuml
+
+package SrsListener <<Rectangle>> {
+    enum SrsListenerType {
+        // RTMP client,
+        SrsListenerRtmpStream = 0,
+        // HTTP api,
+        SrsListenerHttpApi = 1,
+        // HTTP stream, HDS/HLS/DASH
+        SrsListenerHttpStream = 2,
+        // UDP stream, MPEG-TS over udp.
+        SrsListenerMpegTsOverUdp = 3,
+        // TCP stream, RTSP stream.
+        SrsListenerRtsp = 4,
+        // TCP stream, FLV stream over HTTP.
+        SrsListenerFlv = 5,
+        // UDP stream, gb28181 ps stream over rtp, 
+        SrsListenerGb28181RtpMux = 6,
+        // UDP gb28181 sip server
+        SrsListenerGb28181Sip = 7,
+        // HTTPS api,
+        SrsListenerHttpsApi = 8,
+        // HTTPS stream,
+        SrsListenerHttpsStream = 9,
+    }
+
+    class SrsServer {
+
+    }
+
+    abstract class SrsListener {
+        #SrsListenerType type
+        #std::string ip
+        #int port
+        #SrsServer* server
+        + {abstract} SrsListenerType listen_type()
+        + {abstract} srs_error_t listen(std::string i, int p) = 0
+    }
+
+    SrsListener *- SrsListenerType
+    SrsListener o- SrsServer
+}
+
+package ConroutineListener <<Rectangle>> {
+    class SrsTcpListener {
+        - SrsCoroutine* trd
+        - ISrsTcpHandler* handler;
+        + {abstract} srs_error_t listen()
+        + {abstract} srs_error_t cycle()
+    }
+
+    note right of SrsTcpListener::trd
+    accept线程
+    end note
+    note right of SrsTcpListener::handler
+    新的客户端连接处理句柄
+    end note
+    note right of SrsTcpListener::listen
+    监听端口，同时创建accept线程
+    end note
+    note right of SrsTcpListener::cycle
+    线程执行函数
+    end note
+
+    class SrsUdpListener {
+        #SrsCoroutine* trd
+        #ISrsUdpHandler* handler
+        + {abstract} srs_error_t listen()
+        + {abstract} srs_error_t cycle()
+    }
+
+    note right of SrsUdpListener::trd
+    recvfrom线程
+    end note
+    note right of SrsUdpListener::handler
+    收到UDP包处理句柄
+    end note
+    note right of SrsUdpListener::listen
+    监听UDP端口，同时创建recvfro线程
+    end note
+    note right of SrsUdpListener::cycle
+    线程执行函数
+    end note
+
+    interface ISrsTcpHandler {
+        + {abstract} srs_error_t on_tcp_client(srs_netfd_t stfd) = 0
+    }
+
+    interface ISrsUdpHandler {
+        + {abstract} srs_error_t on_udp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf) = 0
+    }
+
+    SrsTcpListener o-- ISrsTcpHandler
+    SrsUdpListener o-- ISrsUdpHandler
+}
+
+
+class SrsBufferListener #PowderBlue {
+    - SrsTcpListener* listener
+    + {abstract} srs_error_t listen(...)
+    + {abstract} srs_error_t on_tcp_client(srs_netfd_t stfd)
+}
+
+SrsListener <|-- SrsBufferListener
+ISrsTcpHandler <|-- SrsBufferListener
+SrsBufferListener *-- SrsTcpListener
+
+
+class SrsUdpStreamListener {
+    #SrsUdpListener* listener;
+    #ISrsUdpHandler* caster;
+    + {abstract} srs_error_t listen(...)
+}
+
+class SrsUdpCasterListener #Teal {
+
+}
+
+class SrsMpegtsOverUdp {
+
+}
+
+SrsListener <|-- SrsUdpStreamListener
+SrsUdpStreamListener *-- SrsUdpListener
+SrsUdpStreamListener o-- ISrsUdpHandler
+SrsUdpStreamListener <|-- SrsUdpCasterListener
+SrsUdpCasterListener *-- SrsMpegtsOverUdp
+ISrsUdpHandler <|-- SrsMpegtsOverUdp
+
+class SrsRtspCaster {
+
+}
+
+class SrsRtspListener #Teal {
+    -SrsTcpListener* listener
+    -SrsRtspCaster* caster
+    + {abstract} srs_error_t listen(...)
+    + {abstract} srs_error_t on_tcp_client(srs_netfd_t stfd)
+}
+
+SrsListener <|-- SrsRtspListener
+ISrsTcpHandler <|-- SrsRtspListener
+SrsRtspListener *-- SrsTcpListener
+SrsRtspListener *-- SrsRtspCaster
+ISrsTcpHandler <|-- SrsRtspCaster
+
+@enduml

@@ -1,0 +1,47 @@
+@startuml
+
+title src/main/srs_main_server.cpp
+
+|main|
+:main;
+:do_main;
+:run_directly_or_daemon;
+:run_hybrid_server;
+note right
+  注册服务，初始化并运
+  行服务运行服务会阻塞
+  主线程，直至程序退出
+end note
+
+|hybrid server|
+:_srs_hybrid->register_server;
+:_srs_hybrid->initialize;
+:_srs_hybrid->run;
+note right
+  阻塞主线程
+end note
+
+|srs server adapter|
+:SrsServer->initialize\nSrsServer->initialize_st\nSrsServer->acquire_pid_file\nSrsServer->initialize_signal;
+#FFAA99:SrsServer->listen;
+
+|ses server|
+:listen_rtmp\nlisten_http_api\nlisten_https_api\nlisten_http_stream\nlisten_https_stream;
+#FFAA99:listen_stream_caster;
+:conn_manager->start;
+
+
+|srs server adapter|
+:SrsServer->register_signal\nSrsServer->http_handle\nSrsServer->ingest;
+#FFAA99:SrsServer->cycle;
+note right
+  阻塞主线程
+end note
+
+|hybrid server|
+:_srs_hybrid->stop;
+
+|main|
+stop
+
+@enduml

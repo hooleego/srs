@@ -1,0 +1,121 @@
+@startuml
+
+package SrsListener <<Rectangle>> {
+    enum SrsListenerType {
+        // RTMP client,
+        SrsListenerRtmpStream = 0,
+        // HTTP api,
+        SrsListenerHttpApi = 1,
+        // HTTP stream, HDS/HLS/DASH
+        SrsListenerHttpStream = 2,
+        // UDP stream, MPEG-TS over udp.
+        SrsListenerMpegTsOverUdp = 3,
+        // TCP stream, RTSP stream.
+        SrsListenerRtsp = 4,
+        // TCP stream, FLV stream over HTTP.
+        SrsListenerFlv = 5,
+        // UDP stream, gb28181 ps stream over rtp, 
+        SrsListenerGb28181RtpMux = 6,
+        // UDP gb28181 sip server
+        SrsListenerGb28181Sip = 7,
+        // HTTPS api,
+        SrsListenerHttpsApi = 8,
+        // HTTPS stream,
+        SrsListenerHttpsStream = 9,
+    }
+
+    class SrsServer {
+
+    }
+
+    abstract class SrsListener {
+        #SrsListenerType type
+        #std::string ip
+        #int port
+        #SrsServer* server
+        + {abstract} SrsListenerType listen_type()
+        + {abstract} srs_error_t listen(std::string i, int p) = 0
+    }
+
+    SrsListener *- SrsListenerType
+    SrsListener o- SrsServer
+}
+
+interface ISrsTcpHandler {
+    + {abstract} srs_error_t on_tcp_client(srs_netfd_t stfd) = 0
+}
+
+class SrsGb28181TcpListener {
+    - SrsTcpListener* listener;
+	- SrsGb28181Caster* caster;
+
+    + {abstract} srs_error_t listen(std::string i, int p)
+    + {abstract} srs_error_t on_tcp_client(srs_netfd_t stfd)
+
+}
+SrsListener <|-- SrsGb28181TcpListener
+ISrsTcpHandler <|-- SrsGb28181TcpListener
+
+class SrsTcpListener {
+    - SrsCoroutine* trd
+    - ISrsTcpHandler* handler;
+    + {abstract} srs_error_t listen()
+    + {abstract} srs_error_t cycle()
+}
+note left of SrsTcpListener::trd
+accept线程
+end note
+note left of SrsTcpListener::handler
+新的客户端连接处理句柄
+end note
+note left of SrsTcpListener::listen
+监听端口，同时创建accept线程
+end note
+note left of SrsTcpListener::cycle
+线程执行函数
+end note
+
+SrsTcpListener o- ISrsTcpHandler
+SrsGb28181TcpListener *-- SrsTcpListener
+
+package Caster <<Rectangle>> {
+    class SrsGb28181Caster {
+        - SrsGb28181TcpPsRtpProcessor *rtp_processor
+        - std::vector<SrsGb28181Conn*> clients
+        - SrsResourceManager* manager
+        + {abstract} srs_error_t on_tcp_client(srs_netfd_t stfd)
+    }
+
+    ISrsTcpHandler <|-- SrsGb28181Caster
+    SrsGb28181TcpListener *-- SrsGb28181Caster
+    
+    class SrsGb28181TcpPsRtpProcessor {
+        成员变量和函数与UDP模式下的SrsGb28181PsRtpProcessor类似
+        + {abstract} srs_error_t on_rtp(char* buf, int nb_buf, std::string ip, int port)
+    }
+    SrsGb28181Caster *-- SrsGb28181TcpPsRtpProcessor
+
+    class SrsGb28181Conn {
+        接收RTSP包并进行解包和分发的处理类
+        每一路RTP流都会创建一个对应的实例
+        - {abstract} srs_error_t do_cycle()
+    }
+    note left of SrsGb28181Conn::do_cycle()
+      接收RTSP包，
+      并进行分发
+    end note
+    SrsGb28181Caster "1.."*--"n.." SrsGb28181Conn
+    SrsGb28181Conn o- SrsGb28181TcpPsRtpProcessor
+
+    class SrsResourceManager {
+        用户消除SrsGb28181Conn
+        处理过程中产生的僵尸线程
+    }
+    SrsGb28181Caster *-- SrsResourceManager
+
+
+}
+
+
+
+@enduml

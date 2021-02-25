@@ -1,0 +1,99 @@
+swagger: '2.0'
+info:
+  title: 国标流媒体转发服务器API
+  description: 提供用于转发符合GB28181标准的媒体流转发接口
+  version: 1.0.0
+# host: 127.0.0.1
+# basePath: /api
+schemes:
+  - http
+produces:
+  - application/json
+paths:
+  /api/v1/gb28181:
+    get:
+      summary: 获取转发媒体流的地址、端口以及播放地址
+      description: 获取转发媒体流的地址、端口以及播放地址
+      parameters:
+        - name: id
+          in: path
+          description: 通道ID，由调用方管理，必须保证唯一
+          required: true
+          type: string
+        - name: action
+          in: path
+          description: 接口行为，必须为"create_channel"
+          required: true
+          type: string
+        - name: app
+          in: path
+          description: 调用方标识
+          required: true
+          type: string
+        - name: stream
+          in: path
+          description: 流标识，用户区分每一条流，例如使用设备ID+通道ID组合
+          required: true
+          type: string
+        - name: port_mode
+          in: path
+          description: 端口模式，取值为"fixed"和"random"
+          required: true
+          type: string
+      tags:
+        - Products
+      responses:
+        200:
+          description: 返回转发媒体流的地址、端口以及播放地址
+          schema:
+            type: object
+            $ref: '#/definitions/gb28181Resp'
+definitions:
+  gb28181Resp:
+    type: object
+    properties:
+      code:
+        type: number
+        description: 状态码，0表示成功
+      data:
+        type: object
+        properties:
+          query:
+            type: object
+            properties:
+              id:
+                type: string
+                description: 设备通道id
+              ip:
+                type: string
+                description: 媒体转发服务器IP地址
+              rtmp_port:
+                type: number
+                description: RTMP协议播放流端口
+              app:
+                type: string
+                description: 调用方标识
+              stream:
+                type: string
+                description: 流标识，用户区分每一条流，例如使用设备ID+通道ID组合
+              rtp_port:
+                type: number
+                description: 媒体转发服务器接收RTP包的端口
+              ssrc:
+                type: number
+                description: 媒体转发服务器根据id生成的ssrc，如果设备支持，可以让设备发送RTP时，带此ssrc发送RTP包
+              rtmp_url:
+                type: string
+                description: RTMP协议播放流地址
+              flv_url:
+                type: string
+                description: FLV协议播放流地址
+              hls_url:
+                type: string
+                description: HLS协议播放流地址
+              webrtc_url:
+                type: string
+                description: WebRTC协议播放流地址
+              
+              
+              

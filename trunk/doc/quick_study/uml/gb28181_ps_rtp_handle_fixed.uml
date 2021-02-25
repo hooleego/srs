@@ -1,0 +1,82 @@
+@startuml
+
+title GB28181媒体流(RTP包)处理流程
+
+participant SrsGb28181Listener as listener
+participant SrsGb28181RtpMuxService as rtp
+participant SrsGb28181PsRtpProcessor as processor
+participant SrsGb28181Manger as manager
+participant SrsGb28181RtmpMuxer as muxer
+
+note over listener, muxer
+处理来自于SrsGb28181Listener收到的RTP包，
+SrsGb28181Listener用于接收没有通过SIP信令服务器建立的RTP流，
+在这种情况下，需要将配置文件中的auto_create_channel打开，
+以便服务器根据收到PS RTP包自带创建RTMP媒体通道，不需要API接口创建
+
+<font color=red>对于动态端口模式，服务器会新建一个接收RTP流的端口线程，
+<font color=red>这个新建的端口并不会影响SrsGb28181Listener接收RTP包
+<font color=red>从SrsGb28181Listener收到的RTP包可以通过ssrc找到已经
+<font color=red>创建的RTMP通道，并将RTP包存入通道中
+end note
+
+listener -> rtp: on_udp_packet
+rtp -> processor: on_udp_packet
+
+processor -> processor: 获取RTP包来源地址和端口
+processor -> processor: 对RTP包进行解包
+processor -> processor: 将RTP包缓存起来
+processor -> manager: fetch_rtmpmuxer_by_ssrc
+note right
+    根据RTP中的ssrc获取Muxer,
+    因为这种情况下，我们无法根据
+    上下文和RTP包确定channel_id
+end note
+alt Muxer存在
+    processor <-- manager: 返回Muxer
+else
+
+    processor -> manager: create_stream_channel
+    note right
+        SrsGb28181StreamChannel {
+            channel_id = chid[ssrc]
+            port_mode = "fixed" | "random"
+            ssrc = ssrc
+        }
+    end note
+
+    alt port_mode = 固定端口(默认是9000)
+        manager -> manager: rtp_port = 读取固定端口
+    else
+        manager -> manager: rtp_port = 根据配置随机分配端口
+        manager -> manager: 监听RTP端口，并启动读取线程
+    end alt
+    manager -> manager: 构造RTMP地址和播放地址
+    manager -> manager: 初始化通道信息和RTMP客户端信息
+    manager -> muxer: 新建一个RTMP Muxer
+
+    muxer -> muxer: 初始化
+    muxer -> muxer: 启动
+
+    manager <-- muxer: 返回RTMP Muxer
+
+    processor <-- manager: 返回创建结果
+    processor -> manager: fetch_rtmpmuxer
+    note right
+        根据id获取Muxer
+        id = "chid[ssrc]"
+    end note
+    processor <-- manager: 返回前面步骤创建的Muxer
+end alt
+
+processor -> muxer: ps_packet_enqueue
+note right
+  将解析好的RTP
+  包存入队列。
+  Muxer在线程中
+  持续分发队列中
+  的RTP包
+end note
+
+
+@enduml

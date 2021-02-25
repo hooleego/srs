@@ -1,0 +1,132 @@
+@startuml
+
+package SrsListener <<Rectangle>> {
+    enum SrsListenerType {
+        // RTMP client,
+        SrsListenerRtmpStream = 0,
+        // HTTP api,
+        SrsListenerHttpApi = 1,
+        // HTTP stream, HDS/HLS/DASH
+        SrsListenerHttpStream = 2,
+        // UDP stream, MPEG-TS over udp.
+        SrsListenerMpegTsOverUdp = 3,
+        // TCP stream, RTSP stream.
+        SrsListenerRtsp = 4,
+        // TCP stream, FLV stream over HTTP.
+        SrsListenerFlv = 5,
+        // UDP stream, gb28181 ps stream over rtp, 
+        SrsListenerGb28181RtpMux = 6,
+        // UDP gb28181 sip server
+        SrsListenerGb28181Sip = 7,
+        // HTTPS api,
+        SrsListenerHttpsApi = 8,
+        // HTTPS stream,
+        SrsListenerHttpsStream = 9,
+    }
+
+    class SrsServer {
+
+    }
+
+    abstract class SrsListener {
+        #SrsListenerType type
+        #std::string ip
+        #int port
+        #SrsServer* server
+        + {abstract} SrsListenerType listen_type()
+        + {abstract} srs_error_t listen(std::string i, int p) = 0
+    }
+
+    SrsListener *- SrsListenerType
+    SrsListener o- SrsServer
+}
+
+class SrsUdpListener {
+    #SrsCoroutine* trd
+    #ISrsUdpHandler* handler
+    + {abstract} srs_error_t listen()
+    + {abstract} srs_error_t cycle()
+}
+
+note left of SrsUdpListener::trd
+recvfrom线程
+end note
+note left of SrsUdpListener::handler
+收到UDP包处理句柄
+end note
+note left of SrsUdpListener::listen
+监听UDP端口，同时创建recvfro线程
+end note
+note left of SrsUdpListener::cycle
+线程执行函数
+end note
+
+interface ISrsUdpHandler {
+    + {abstract} srs_error_t on_udp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf) = 0
+}
+
+SrsUdpListener o-- ISrsUdpHandler
+
+
+class SrsUdpStreamListener {
+    #SrsUdpListener* listener;
+    #ISrsUdpHandler* caster;
+    + {abstract} srs_error_t listen(...)
+}
+
+SrsListener <|-- SrsUdpStreamListener
+SrsUdpStreamListener *-- SrsUdpListener
+SrsUdpStreamListener o-- ISrsUdpHandler
+
+
+
+package Fixed <<Rectangle>> {
+    class SrsGb28181Listener {
+
+    }
+
+    SrsUdpStreamListener <|-- SrsGb28181Listener
+
+    class SrsGb28181RtpMuxService {
+        - SrsGb28181PsRtpProcessor *rtp_processor
+        + {abstract} srs_error_t on_udp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf)
+    }
+    
+
+}
+
+class SrsGb28181PsRtpProcessor {
+    + {abstract} srs_error_t on_udp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf)
+    + {abstract} srs_error_t on_rtp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf)
+}
+note right of SrsGb28181PsRtpProcessor::on_rtp_packet
+    RTP包处理函数,
+    详见后续流程图
+end note
+SrsGb28181Listener *-- SrsGb28181RtpMuxService
+ISrsUdpHandler <|-- SrsGb28181RtpMuxService
+SrsGb28181RtpMuxService *-- SrsGb28181PsRtpProcessor
+ISrsUdpHandler <|-- SrsGb28181PsRtpProcessor
+
+class SrsGb28181RtmpMuxer {
+    RTMP multiplexer, which processes the raw H264 / AAC, 
+    then publish it to RTMP server
+}
+SrsGb28181PsRtpProcessor o-- SrsGb28181RtmpMuxer
+
+package Random <<Rectangle>> {
+    class SrsPsRtpListener {
+        - SrsUdpListener* listener
+        - SrsGb28181PsRtpProcessor* rtp_processor
+        + {abstract} srs_error_t listen()
+        + {abstract} srs_error_t on_udp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf)
+    }
+    ISrsUdpHandler <|-- SrsPsRtpListener
+    SrsPsRtpListener *-- SrsUdpListener
+    SrsPsRtpListener *-- SrsGb28181PsRtpProcessor
+
+}
+
+
+
+@enduml

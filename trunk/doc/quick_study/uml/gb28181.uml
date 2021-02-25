@@ -1,0 +1,92 @@
+@startuml
+
+abstract class ISrsUdpHandler {
+  + {abstract} on_udp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf) = 0
+}
+
+class SrsGb28181PsRtpProcessor {
+  
+}
+
+class SrsPsRtpListener {
+
+}
+
+class SrsGb28181Manger {
+  - std::map<uint32_t, SrsPsRtpListener*> rtp_pool
+  - SrsGb28181SipService* sip_service;
+  + create_stream_channel(SrsGb28181StreamChannel *channel)
+  + start_ps_rtp_listen(std::string id, int port)
+}
+
+class SrsGb28181SipSession {
+  - do_cycle()
+}
+
+class SrsGb28181SipService {
+  - std::map<std::string, SrsGb28181SipSession*> sessions
+  + {abstract} on_udp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf)
+  - on_udp_sip(std::string host, int port, std::string recv_msg, sockaddr* from, int fromlen)
+  + fetch_or_create_sip_session(SrsSipRequest *req,  SrsGb28181SipSession** sess)
+}
+note right of SrsGb28181SipService::on_udp_packet
+  继承自ISrsUdpHandler
+  该函数内部调用私有函数
+  on_udp_sip处理SIP信令
+end note
+note right of SrsGb28181SipService::on_udp_sip
+  该函数处理以下四种SIP信令：
+  1.REGISTER信令：
+    调用fetch_or_create_sip_session
+    获取或创建SrsGb28181SipSession,
+    新建的SrsGb28181SipSession保存
+    在变量sessions中，session变量的
+    主键是SIP会话的sip_auth_id
+  2.INVITE信令：
+    TBD
+  3.MESSAGE信令：
+    TBD
+  4.BYE信令：
+    TBD
+end note
+
+ISrsUdpHandler <|-- SrsPsRtpListener
+ISrsUdpHandler <|-- SrsGb28181PsRtpProcessor
+ISrsUdpHandler <|-- SrsGb28181SipService
+SrsPsRtpListener *-- SrsGb28181PsRtpProcessor
+SrsGb28181Manger o-- SrsPsRtpListener
+SrsGb28181SipService *-- SrsGb28181SipSession
+SrsGb28181Manger o-- SrsGb28181SipService
+
+
+class SrsServer {
+  - std::vector<SrsListener*> listeners
+}
+
+SrsServer o-- SrsGb28181Manger
+
+class SrsUdpListener {
+
+}
+
+class SrsUdpStreamListener {
+  #SrsUdpListener* listener;
+  #ISrsUdpHandler* caster;
+  + listen(std::string i, int p)
+}
+
+class SrsGb28181Listener {
+
+}
+
+class SrsServerAdapter {
+  - SrsServer* srs
+  + {abstract} initialize()
+  + {abstract} run()
+  + {abstract} stop()
+  + SrsServer* instance()
+}
+
+SrsServerAdapter *-- SrsServer
+
+@enduml

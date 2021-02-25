@@ -1,0 +1,47 @@
+@startuml
+
+title GB28181媒体流(RTP包)处理流程
+
+participant SrsPsRtpListener as listener
+participant SrsGb28181PsRtpProcessor as processor
+participant SrsGb28181Manger as manager
+participant SrsGb28181RtmpMuxer as muxer
+
+note over listener, muxer
+  处理来自于SrsPsRtpListener收到的RTP包，SrsPsRtpListener用于接收RTP包，并存入预先创建好的RTMP媒体通道。
+  这些媒体通道用channel_id进行标识，channel_id存于处理流程中的上下文中。
+  预先创建RTMP媒体通道的方式：
+        1.在固定端口收到第一个RTP包时创建（auto_create_channel必须打开，并且我们无法将新监听的端口通知到客户端）
+        2.通过SIP信令服务器收到注册消息后创建。这种情况下，可以通过INVITE信令将RTP端口通知客户端
+  根据以上两种方式创建好RTMP媒体通道，并将channel_id和通道添加到映射表中，所以一定能根据channel_id找到对应的
+  RTMP媒体通道。
+end note
+
+listener -> processor: on_udp_packet
+
+processor -> processor: 获取RTP包来源地址和端口
+processor -> processor: 对RTP包进行解包
+processor -> processor: 将RTP包缓存起来
+processor -> manager: fetch_rtmpmuxer
+note right
+    根据上下文中的channel_id获取Muxer
+end note
+alt Muxer存在
+    processor <-- manager: 返回Muxer
+else
+    note over processor, manager
+        正常情况下不会出现
+    end note
+end alt
+
+processor -> muxer: ps_packet_enqueue
+note right
+  将解析好的RTP
+  包存入队列。
+  Muxer在线程中
+  持续分发队列中
+  的RTP包
+end note
+
+
+@enduml

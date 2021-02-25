@@ -1,0 +1,91 @@
+@startuml
+
+title 录像回放点播处理流程
+
+autonumber
+
+participant 前端 as frontend
+participant CMS as cms
+participant SRS as srs
+participant 国标网关 as gw
+participant NVR as nvr
+
+note over frontend, nvr
+e.g:
+http://10.60.0.41:2085/api/v1/gb28181?id=test_channel_id&action=create_channel&app=live&stream=test_stream&port_mode=random
+end note
+
+frontend -> cms: 发起点播请求
+activate cms
+note right
+reqBody = {
+	devId: 设备ID
+	channelNo：设备通道号,IPC为0，NVR为相应通道
+	streamType: 1为主码流，2为子码流，实时预览时必填
+	start: 录像回放起始时间
+	end: 录像回放结束时间
+	playType: 0为实时预览；1为录像回放
+	webType: 0为WEB端；1为APP端；2为UE4端
+}
+end note
+cms -> srs++: 获取转发媒体流的地址、端口\n以及媒体流播放地址
+note right
+协议: HTTP
+方法：GET
+参数:
+1.id: 通道id，必须是唯一的，由CMS管理
+2.action: 必须是create_channel，表示创建一个接收RTP流的通道
+3.app: 调用方名称
+4.stream: 播放的流名称
+5.port_mode: 端口模式，取值可以是: "fixed"和"random". 
+"fixed"表示使用固定端口接收RTP流，默认是9000，可配置；
+"random"表示使用随机端口接收RTP流
+end note
+return 返回转发媒体流的地址、端口\n以及媒体流播放地址
+note right
+response = {
+    "code": 0,
+    "data": {
+        "query": {
+            "id": "test_channel_id",
+            "ip": "10.60.0.41",
+            "rtmp_port": 2035,
+            "app": "live",
+            "stream": "test_stream",
+            "rtmp_url": "rtmp://10.60.0.41:2035/live/test_stream",
+            "flv_url": "http://10.60.0.41:8090/live/test_stream.flv",
+            "hls_url": "http://10.60.0.41:8090/live/test_stream.m3u8",
+            "webrtc_url": "webrtc://10.60.0.41:2085/live/test_stream",
+            "rtp_port": 58200,
+            "ssrc": 1287181
+        }
+    }
+}
+end note
+
+cms -> gw: 请求录像回放
+gw -> nvr: 请求录像回放
+nvr -> srs: 推送流媒体
+gw <-- nvr: 请求录像回放返回
+cms <-- gw: 请求录像回放返回
+frontend <-- cms: 点播返回
+note right
+response = {
+    "code": 0,
+    "data": {
+        "playId": "uuid",
+        "flvUrl": "http://10.60.0.41:8090/live/test_stream.flv",
+        "m3u8Url": "http://10.60.0.41:8090/live/test_stream.m3u8",
+        "webrtcUrl": "webrtc://10.60.0.41:2085/live/test_stream"
+    },
+    "message": ""
+}
+end note
+deactivate cms
+
+frontend -> srs++: 拉取媒体流
+return
+
+
+
+@enduml

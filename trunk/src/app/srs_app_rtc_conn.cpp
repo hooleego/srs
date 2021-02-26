@@ -60,15 +60,15 @@ using namespace std;
 
 #include <srs_protocol_kbps.hpp>
 
-SrsPps* _srs_pps_sstuns = new SrsPps(_srs_clock);
-SrsPps* _srs_pps_srtcps = new SrsPps(_srs_clock);
-SrsPps* _srs_pps_srtps = new SrsPps(_srs_clock);
+SrsPps* _srs_pps_sstuns = new SrsPps();
+SrsPps* _srs_pps_srtcps = new SrsPps();
+SrsPps* _srs_pps_srtps = new SrsPps();
 
-SrsPps* _srs_pps_pli = new SrsPps(_srs_clock);
-SrsPps* _srs_pps_twcc = new SrsPps(_srs_clock);
-SrsPps* _srs_pps_rr = new SrsPps(_srs_clock);
-SrsPps* _srs_pps_pub = new SrsPps(_srs_clock);
-SrsPps* _srs_pps_conn = new SrsPps(_srs_clock);
+SrsPps* _srs_pps_pli = new SrsPps();
+SrsPps* _srs_pps_twcc = new SrsPps();
+SrsPps* _srs_pps_rr = new SrsPps();
+SrsPps* _srs_pps_pub = new SrsPps();
+SrsPps* _srs_pps_conn = new SrsPps();
 
 extern SrsPps* _srs_pps_snack;
 extern SrsPps* _srs_pps_snack2;
@@ -1152,8 +1152,9 @@ srs_error_t SrsRtcPublishStream::on_rtp(char* data, int nb_data)
     }
 
     // Decrypt the cipher to plaintext RTP data.
-    int nb_unprotected_buf = nb_data;
-    if ((err = session_->transport_->unprotect_rtp(data, &nb_unprotected_buf)) != srs_success) {
+    char* plaintext = data;
+    int nb_plaintext = nb_data;
+    if ((err = session_->transport_->unprotect_rtp(plaintext, &nb_plaintext)) != srs_success) {
         // We try to decode the RTP header for more detail error informations.
         SrsBuffer b(data, nb_data); SrsRtpHeader h; h.ignore_padding(true);
         srs_error_t r0 = h.decode(&b); srs_freep(r0); // Ignore any error for header decoding.
@@ -1164,16 +1165,8 @@ srs_error_t SrsRtcPublishStream::on_rtp(char* data, int nb_data)
         return err;
     }
 
-    srs_assert(nb_unprotected_buf > 0);
-    char* unprotected_buf = new char[nb_unprotected_buf];
-    memcpy(unprotected_buf, data, nb_unprotected_buf);
-
-    if (_srs_blackhole->blackhole) {
-        _srs_blackhole->sendto(unprotected_buf, nb_unprotected_buf);
-    }
-
     // Handle the plaintext RTP packet.
-    if ((err = do_on_rtp(unprotected_buf, nb_unprotected_buf)) != srs_success) {
+    if ((err = on_rtp_plaintext(plaintext, nb_plaintext)) != srs_success) {
         // We try to decode the RTP header for more detail error informations.
         SrsBuffer b(data, nb_data); SrsRtpHeader h; h.ignore_padding(true);
         srs_error_t r0 = h.decode(&b); srs_freep(r0); // Ignore any error for header decoding.
@@ -1181,19 +1174,20 @@ srs_error_t SrsRtcPublishStream::on_rtp(char* data, int nb_data)
         int nb_header = h.nb_bytes();
         const char* body = data + nb_header;
         int nb_body = nb_data - nb_header;
-        return srs_error_wrap(err, "cipher=%u, plaintext=%u, body=[%s]", nb_data, nb_unprotected_buf,
+        return srs_error_wrap(err, "cipher=%u, plaintext=%u, body=[%s]", nb_data, nb_plaintext,
             srs_string_dumps_hex(body, nb_body, 8).c_str());
     }
 
     return err;
 }
 
-srs_error_t SrsRtcPublishStream::do_on_rtp(char* plaintext, int nb_plaintext)
+srs_error_t SrsRtcPublishStream::on_rtp_plaintext(char* plaintext, int nb_plaintext)
 {
     srs_error_t err = srs_success;
 
-    char* buf = plaintext;
-    int nb_buf = nb_plaintext;
+    if (_srs_blackhole->blackhole) {
+        _srs_blackhole->sendto(plaintext, nb_plaintext);
+    }
 
     // Decode the RTP packet from buffer.
     SrsRtpPacket2* pkt = new SrsRtpPacket2();
@@ -1203,9 +1197,12 @@ srs_error_t SrsRtcPublishStream::do_on_rtp(char* plaintext, int nb_plaintext)
         pkt->set_decode_handler(this);
         pkt->set_extension_types(&extension_types_);
         pkt->shared_msg = new SrsSharedPtrMessage();
-        pkt->shared_msg->wrap(buf, nb_buf);
 
-        SrsBuffer b(buf, nb_buf);
+        char* buf = new char[nb_plaintext];
+        memcpy(buf, plaintext, nb_plaintext);
+        pkt->shared_msg->wrap(buf, nb_plaintext);
+
+        SrsBuffer b(buf, nb_plaintext);
         if ((err = pkt->decode(&b)) != srs_success) {
             return srs_error_wrap(err, "decode rtp packet");
         }
@@ -1605,6 +1602,11 @@ SrsRtcConnection::SrsRtcConnection(SrsRtcServer* s, const SrsContextId& cid)
     server_ = s;
     transport_ = new SrsSecurityTransport(this);
 
+    cache_iov_ = new iovec();
+    cache_iov_->iov_base = new char[kRtpPacketSize];
+    cache_iov_->iov_len = kRtpPacketSize;
+    cache_buffer_ = new SrsBuffer((char*)cache_iov_->iov_base, kRtpPacketSize);
+
     state_ = INIT;
     last_stun_time = 0;
     session_timeout = 0;
@@ -1647,6 +1649,9 @@ SrsRtcConnection::~SrsRtcConnection()
         SrsUdpMuxSocket* addr = it->second;
         srs_freep(addr);
     }
+
+    srs_freep(cache_iov_);
+    srs_freep(cache_buffer_);
 
     srs_freep(transport_);
     srs_freep(req);
@@ -2510,22 +2515,16 @@ srs_error_t SrsRtcConnection::do_send_packets(const std::vector<SrsRtpPacket2*>&
         SrsRtpPacket2* pkt = pkts.at(i);
 
         // For this message, select the first iovec.
-        iovec* iov = new iovec();
-        SrsAutoFree(iovec, iov);
-
-        char* iov_base = new char[kRtpPacketSize];
-        SrsAutoFreeA(char, iov_base);
-
-        iov->iov_base = iov_base;
+        iovec* iov = cache_iov_;
         iov->iov_len = kRtpPacketSize;
+        cache_buffer_->skip(-1 * cache_buffer_->pos());
 
         // Marshal packet to bytes in iovec.
         if (true) {
-            SrsBuffer stream((char*)iov->iov_base, iov->iov_len);
-            if ((err = pkt->encode(&stream)) != srs_success) {
+            if ((err = pkt->encode(cache_buffer_)) != srs_success) {
                 return srs_error_wrap(err, "encode packet");
             }
-            iov->iov_len = stream.pos();
+            iov->iov_len = cache_buffer_->pos();
         }
 
         // Cipher RTP to SRTP packet.

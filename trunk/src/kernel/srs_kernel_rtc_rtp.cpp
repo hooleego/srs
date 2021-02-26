@@ -34,6 +34,12 @@ using namespace std;
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_flv.hpp>
 
+#include <srs_kernel_kbps.hpp>
+
+SrsPps* _srs_pps_objs_rtps = new SrsPps();
+SrsPps* _srs_pps_objs_rraw = new SrsPps();
+SrsPps* _srs_pps_objs_rfua = new SrsPps();
+
 /* @see https://tools.ietf.org/html/rfc1889#section-5.1
   0                   1                   2                   3
   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -764,6 +770,8 @@ SrsRtpPacket2::SrsRtpPacket2()
     shared_msg = NULL;
     frame_type = SrsFrameTypeReserved;
     cached_payload_size = 0;
+
+    ++_srs_pps_objs_rtps->sugar;
 }
 
 SrsRtpPacket2::~SrsRtpPacket2()
@@ -894,6 +902,8 @@ SrsRtpRawPayload::SrsRtpRawPayload()
 {
     payload = NULL;
     nn_payload = 0;
+
+    ++_srs_pps_objs_rraw->sugar;
 }
 
 SrsRtpRawPayload::~SrsRtpRawPayload()
@@ -1231,6 +1241,8 @@ SrsRtpFUAPayload::SrsRtpFUAPayload()
 {
     start = end = false;
     nri = nalu_type = (SrsAvcNaluType)0;
+
+    ++_srs_pps_objs_rfua->sugar;
 }
 
 SrsRtpFUAPayload::~SrsRtpFUAPayload()
@@ -1346,6 +1358,8 @@ SrsRtpFUAPayload2::SrsRtpFUAPayload2()
 
     payload = NULL;
     size = 0;
+
+    ++_srs_pps_objs_rfua->sugar;
 }
 
 SrsRtpFUAPayload2::~SrsRtpFUAPayload2()
